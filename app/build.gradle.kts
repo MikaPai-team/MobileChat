@@ -11,8 +11,8 @@ android {
         applicationId = "com.mobilechat.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.1.7"
+        versionCode = 9
+        versionName = "0.1.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "R8_ENABLED", "false")
     }

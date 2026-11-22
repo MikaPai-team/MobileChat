@@ -39,7 +39,24 @@ class ResponseDecoderTest {
         decoder.accept(parseObject("""{"type":"response.refusal.delta","delta":"无法","output_index":0} """))
         decoder.accept(parseObject("""{"type":"response.refusal.delta","delta":"提供","output_index":0} """))
         decoder.accept(parseObject("""{"type":"response.output_text.delta","delta":"帮助","output_index":1} """))
-        assertEquals("无法提供帮助", decoder.finish(parseObject("{\"status\":\"completed\",\"output\":[]}")).text)
+        assertEquals("无法提供\n\n帮助", decoder.finish(parseObject("{\"status\":\"completed\",\"output\":[]}")).text)
+    }
+    @Test fun segmentBoundariesMatchStreamingAndFinalOutputWithoutDuplicatingDoneEvents() {
+        val decoder = ResponseDecoder()
+        decoder.accept(parseObject("""{"type":"response.output_text.delta","output_index":0,"delta":"第一"}"""))
+        decoder.accept(parseObject("""{"type":"response.output_text.delta","output_index":0,"delta":"段"}"""))
+        decoder.accept(parseObject("""{"type":"response.output_text.done","output_index":0,"text":"第一段"}"""))
+        assertEquals(ResponseUpdate.Text("第一段\n\n第二段"), decoder.accept(parseObject(
+            """{"type":"response.output_text.delta","output_index":1,"content_index":0,"delta":"第二段"}""")))
+        val response = parseObject("""{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"第一段"}]},{"type":"message","content":[{"type":"output_text","text":"第二段"}]}]}""")
+        assertEquals("第一段\n\n第二段", decoder.finish(response).text)
+    }
+    @Test fun contentPartsAndExistingParagraphBreaksArePreserved() {
+        val decoder = ResponseDecoder()
+        decoder.accept(parseObject("""{"type":"response.content_part.done","part":{"type":"output_text","text":"第一段\n\n"},"content_index":0}"""))
+        assertEquals(ResponseUpdate.Text("第一段\n\n第二段"), decoder.accept(parseObject(
+            """{"type":"response.content_part.done","part":{"type":"output_text","text":"第二段"},"content_index":1}""")))
+        assertEquals("第一段\n\n第二段", decoder.finish(parseObject("""{"status":"completed","output":[]}""")).text)
     }
     @Test fun incompleteResponseNeverBecomesSuccess() {
         val decoder = ResponseDecoder()

@@ -12,6 +12,7 @@ class ChatRepository(context: Context, val database: ChatDatabase = ChatDatabase
     val files = AttachmentStore(context)
     private val initialization = CoroutineScope(SupervisorJob() + Dispatchers.IO).async {
         dao.markInterrupted()
+        dao.deleteEmptyConversations()
         files.cleanupOrphans(dao.fileIds().toSet())
     }
     suspend fun awaitReady() { initialization.await() }

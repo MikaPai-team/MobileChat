@@ -24,6 +24,24 @@ class ResponsesClientTest {
     private fun jsonReply(text: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(completed(text))
     private fun event(type: String, data: String) = "event: $type\r\ndata: $data\r\n\r\n"
 
+    @Test fun titleUsesTheConfiguredProviderModelAndLowEffort() = runBlocking {
+        server.enqueue(jsonReply("“解析分段函数与取值范围”"))
+        val station = provider().copy(defaultModel = "my/model", models = listOf("my/model"),
+            instructions = "普通聊天提示词", reasoningEffort = "xhigh")
+        val prompt = "概括主题，不超过20字"
+        val input = listOf(InputMessage("user", "怎么解分段函数"), InputMessage("assistant", "分别计算三个区间"))
+        assertEquals("解析分段函数与取值范围", ResponsesClient().generateTitle(station, "test-key", input, prompt, "first-turn"))
+        val request = server.takeRequest()
+        assertEquals("/custom/responses?route=test", request.path)
+        assertEquals("Bearer test-key", request.getHeader("Authorization"))
+        val body = parseObject(request.body.readUtf8())
+        assertEquals("my/model", body["model"]!!.jsonPrimitive.content)
+        assertEquals(prompt, body["instructions"]!!.jsonPrimitive.content)
+        assertEquals("low", body["reasoning"]!!.jsonObject["effort"]!!.jsonPrimitive.content)
+        assertFalse(body["reasoning"]!!.jsonObject.containsKey("summary"))
+        assertEquals(2, body["input"]!!.jsonArray.size)
+    }
+
     @Test fun exactEndpointModelsAuthenticationAndOptionalParameters() = runBlocking {
         server.enqueue(jsonReply("你好"))
         val station = provider().copy(defaultModel = "my/custom-model", models = listOf("my/custom-model"), instructions = "中文回答", maxOutputTokens = 123, reasoningEffort = "high")

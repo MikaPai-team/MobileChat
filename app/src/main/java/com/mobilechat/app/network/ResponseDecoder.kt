@@ -9,7 +9,7 @@ internal class ResponseDecoder {
     private val reasoningParts = sortedMapOf<Pair<Int, Int>, String>(compareBy<Pair<Int, Int>> { it.first }.thenBy { it.second })
     var terminal = false
         private set
-    private val text get() = parts.values.joinToString("")
+    private val text get() = joinTextParts(parts.values)
     private val reasoning get() = (summaries.takeIf { it.isNotEmpty() } ?: reasoningParts).values.joinToString("\n\n")
 
     fun accept(event: JsonObject, eventName: String = ""): ResponseUpdate? {
@@ -39,7 +39,17 @@ internal class ResponseDecoder {
                         summaries[slot.first to 0] = summary
                     }
                     ResponseUpdate.Reasoning(reasoning)
+                } else if (item?.get("type")?.jsonPrimitive?.contentOrNull == "message") {
+                    (item["content"] as? JsonArray)?.forEachIndexed { index, part ->
+                        (part as? JsonObject)?.let(::readTextPart)?.let { parts[slot.first to index] = it }
+                    }
+                    ResponseUpdate.Text(text)
                 } else null
+            }
+            "response.content_part.added", "response.content_part.done" -> {
+                val value = (event["part"] as? JsonObject)?.let(::readTextPart)
+                if (!value.isNullOrEmpty()) parts[slot] = value
+                ResponseUpdate.Text(text)
             }
             "response.output_text.delta", "response.refusal.delta" -> {
                 parts[slot] = (parts[slot] ?: "") + (event["delta"]?.jsonPrimitive?.contentOrNull ?: "")
@@ -87,14 +97,28 @@ internal class ResponseDecoder {
     fun finalText(response: JsonObject): String {
         val output = response["output"] as? JsonArray
         val final = output?.mapNotNull { it as? JsonObject }?.filter { it["type"]?.jsonPrimitive?.contentOrNull == "message" }
-            ?.flatMap { (it["content"] as? JsonArray)?.toList() ?: emptyList() }
-            ?.mapNotNull { it as? JsonObject }?.mapNotNull {
-                when (it["type"]?.jsonPrimitive?.contentOrNull) {
-                    "output_text" -> it["text"]?.jsonPrimitive?.contentOrNull
-                    "refusal" -> it["refusal"]?.jsonPrimitive?.contentOrNull
-                    else -> null
-                }
-            }?.joinToString("").orEmpty().ifEmpty { response["output_text"]?.jsonPrimitive?.contentOrNull.orEmpty() }.ifEmpty { text }
+            ?.flatMap(::readMessageParts)?.let(::joinTextParts)
+            .orEmpty().ifEmpty { response["output_text"]?.jsonPrimitive?.contentOrNull.orEmpty() }.ifEmpty { text }
         return final
+    }
+
+    private fun readTextPart(part: JsonObject): String? = when (part["type"]?.jsonPrimitive?.contentOrNull) {
+        "output_text" -> part["text"]?.jsonPrimitive?.contentOrNull
+        "refusal" -> part["refusal"]?.jsonPrimitive?.contentOrNull
+        else -> null
+    }
+
+    private fun readMessageParts(item: JsonObject): List<String> = (item["content"] as? JsonArray)
+        ?.mapNotNull { (it as? JsonObject)?.let(::readTextPart) }.orEmpty()
+
+    private fun joinTextParts(values: Collection<String>): String = buildString {
+        values.filter(String::isNotEmpty).forEach { value ->
+            // Separate Responses content/items, never individual token deltas.
+            if (isNotEmpty() && !endsWith("\n\n") && !value.startsWith("\n\n")) {
+                if (!endsWith("\n") && !value.startsWith("\n")) append("\n\n")
+                else if (!(endsWith("\n") && value.startsWith("\n"))) append('\n')
+            }
+            append(value)
+        }
     }
 }

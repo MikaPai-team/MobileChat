@@ -17,6 +17,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -80,6 +81,7 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onSettings: () -> Unit) {
     var choosingEffort by remember { mutableStateOf(false) }
     var showingHelp by remember { mutableStateOf(false) }
     var attachMenu by remember { mutableStateOf(false) }
+    var editingMessage by remember(conversation.id) { mutableStateOf<MessageEntity?>(null) }
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { vm.importAttachments(it, true) }
     val documents = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { vm.importAttachments(it, false) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { vm.finishPhoto(it) }
@@ -122,13 +124,21 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onSettings: () -> Unit) {
                     val reasoning = generation?.takeIf { it.messageId == message.id }?.reasoning ?: message.reasoning
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.role == "user") Alignment.End else Alignment.Start) {
                         if (message.role == "user") {
-                            Column(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primaryContainer).padding(16.dp)) {
-                                allAttachments.filter { it.messageId == message.id }.forEach { attachment ->
-                                    if (attachment.kind == "image") AsyncImage(vm.repository.files.file(attachment.id), attachment.name, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
-                                    else Text("${attachment.name} · ${formatSize(attachment.size)}", style = MaterialTheme.typography.bodySmall)
-                                    Spacer(Modifier.height(8.dp))
+                            var messageMenu by remember(message.id) { mutableStateOf(false) }
+                            Box {
+                                Column(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primaryContainer)
+                                    .combinedClickable(onClick = {}, onLongClick = { messageMenu = true }, onLongClickLabel = "复制或编辑消息").padding(16.dp)) {
+                                    allAttachments.filter { it.messageId == message.id }.forEach { attachment ->
+                                        if (attachment.kind == "image") AsyncImage(vm.repository.files.file(attachment.id), attachment.name, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
+                                        else Text("${attachment.name} · ${formatSize(attachment.size)}", style = MaterialTheme.typography.bodySmall)
+                                        Spacer(Modifier.height(8.dp))
+                                    }
+                                    if (text.isNotBlank()) Text(text, color = MaterialTheme.colorScheme.onPrimaryContainer)
                                 }
-                                if (text.isNotBlank()) Text(text, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                DropdownMenu(expanded = messageMenu, onDismissRequest = { messageMenu = false }) {
+                                    DropdownMenuItem(text = { Text("复制") }, enabled = text.isNotEmpty(), onClick = { copy(text); messageMenu = false })
+                                    DropdownMenuItem(text = { Text("编辑") }, enabled = !busy, onClick = { editingMessage = message; messageMenu = false })
+                                }
                             }
                         } else {
                             Text(if (message.replacesId != null) "重新生成 · ${message.modelName ?: conversation.model}" else message.modelName ?: conversation.model, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -212,6 +222,19 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onSettings: () -> Unit) {
             }
         }
     }
+    editingMessage?.let { message ->
+        var editedText by remember(message.id) { mutableStateOf(message.text) }
+        var saving by remember(message.id) { mutableStateOf(false) }
+        AlertDialog(onDismissRequest = { if (!saving) editingMessage = null }, title = { Text("编辑消息") }, text = {
+            OutlinedTextField(value = editedText, onValueChange = { editedText = it }, modifier = Modifier.fillMaxWidth(),
+                minLines = 3, maxLines = 10, enabled = !saving)
+        }, confirmButton = {
+            TextButton(enabled = !busy && !saving && (editedText.isNotBlank() || allAttachments.any { it.messageId == message.id }), onClick = {
+                saving = true
+                scope.launch { try { vm.editMessage(message.id, editedText) { editingMessage = null }.join() } finally { saving = false } }
+            }) { Text("保存") }
+        }, dismissButton = { TextButton(enabled = !saving, onClick = { editingMessage = null }) { Text("取消") } })
+    }
     if (choosingModel) ModalBottomSheet(onDismissRequest = { choosingModel = false }) {
         LazyColumn(Modifier.navigationBarsPadding(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Text("站点与模型", style = MaterialTheme.typography.headlineSmall) }
@@ -252,7 +275,7 @@ private fun ReasoningProgress(id: String, text: String, thinking: Boolean) {
             Text(if (thinking) "思考进展" else "思考过程", style = MaterialTheme.typography.labelMedium, color = gray, modifier = Modifier.weight(1f))
             Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, if (expanded) "收起思考过程" else "展开思考过程", Modifier.size(18.dp), tint = gray)
         }
-        if (expanded) Text(text, color = gray, fontSize = 14.sp, lineHeight = 21.sp)
+        if (expanded) MarkdownReply(text, copyText(), animate = thinking, textColor = gray, textSize = 14.sp)
     }
 }
 

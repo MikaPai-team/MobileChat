@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -24,6 +26,15 @@ class ApiException(message: String) : Exception(message)
 class ResponsesClient(private val http: OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(30, TimeUnit.SECONDS).readTimeout(180, TimeUnit.SECONDS)
     .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).build()) {
+
+    suspend fun generateTitle(provider: Provider, apiKey: String, messages: List<InputMessage>, prompt: String, sessionId: String): String {
+        val response = generate(provider.copy(instructions = prompt, reasoningEffort = "low", showReasoning = false, maxOutputTokens = 1024),
+            apiKey, messages, sessionId = "$sessionId:title").filterIsInstance<ResponseUpdate.Completed>().first()
+        val title = response.text.trim().lineSequence().first().trim().removeSurrounding("\"")
+            .removeSurrounding("“", "”").take(20)
+        require(title.isNotBlank()) { "接口未返回会话标题" }
+        return title
+    }
 
     fun generate(provider: Provider, apiKey: String, messages: List<InputMessage>, sessionId: String = UUID.randomUUID().toString()): Flow<ResponseUpdate> = flow {
         provider.validate()

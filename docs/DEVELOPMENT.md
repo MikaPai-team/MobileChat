@@ -1,6 +1,6 @@
 # MobileChat
 
-Android 手机端 AI 聊天工具，采用 Kotlin / Jetpack Compose / Miuix 0.9.4，最低 Android 8（API 26）。应用包名 `com.mobilechat.app`，当前版本 `0.1.7`（versionCode 8）。
+Android 手机端 AI 聊天工具，采用 Kotlin / Jetpack Compose / Miuix 0.9.4，最低 Android 8（API 26）。应用包名 `com.mobilechat.app`，当前源码版本 `0.1.8`（versionCode 9）。
 
 ## 使用
 
@@ -37,6 +37,8 @@ HTTP 地址用于本地或特殊中转站，会以明文连接。手机上的 `1
 - 玻璃默认关闭，开启后只应用到聊天顶部与输入栏。API 33+ 且硬件加速时使用 Miuix 背景模糊，其余设备使用实色。
 
 ## 开发与验证
+
+2026-11-22：`0.1.8` 保留列表内公式块每行的缩进并统一换行符，修复公式闭合标记逃出列表后吞入正文的问题。Responses 的输出项和内容段之间加入段落空行，普通 delta 仍连续拼接。首轮回复成功后，使用相同站点、Key、会话模型和用户指定标题提示词，单独以 low 强度生成标题；失败独立提示，手动改名不被覆盖。返回列表后清理未发送消息的空会话，启动时清理进程退出遗留记录；已有消息不删除。自己的消息可长按复制或原位编辑，保留附件及后续回答。按用户要求，修改后不运行本地测试，仅推送源码与编译双版本 APK。
 
 工具链：JDK 21、Gradle 9.5.0、AGP 9.3.2、Kotlin Compose / Serialization 插件 2.4.0、Android SDK 37。将 SDK 路径写入本机 `local.properties`，该文件不应提交。
 
@@ -76,8 +78,8 @@ MockWebServer 测试覆盖协议、地址与模型、上下文、附件编码、
 
 默认 `-Variant both` 同时生成 `release`（R8 开启）和 `releaseNoR8`（R8 关闭），复制到 `dist/` 并核对签名、SHA-256 和非调试标记。需要下载依赖时去掉 `-Offline`，可加 `-Proxy http://127.0.0.1:7890`。
 
-- R8 开启：`MobileChat-0.1.7-r8-on.apk`，启用优化、代码缩减 / 混淆及资源缩减。
-- R8 关闭：`MobileChat-0.1.7-r8-off.apk`，不启用代码及资源缩减。
+- R8 开启：`MobileChat-0.1.8-r8-on.apk`，启用优化、代码缩减 / 混淆及资源缩减。
+- R8 关闭：`MobileChat-0.1.8-r8-off.apk`，不启用代码及资源缩减。
 - 两个版本均为非调试构建，使用相同包名、版本和已有 Android Debug 证书，可覆盖安装及互换；聊天数据和配置无需卸载清除。
 - APK 旁边生成 `.sha256` 文件，`dist/package-report.json` 记录版本、R8 状态、签名证书和文件校验值。
 - 设置页显示版本及 R8 状态，便于确认当前安装的是哪一个。

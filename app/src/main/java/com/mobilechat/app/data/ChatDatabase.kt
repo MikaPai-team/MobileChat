@@ -31,12 +31,20 @@ interface ChatDao {
     @Query("SELECT * FROM messages WHERE conversationId=:id ORDER BY position, id") suspend fun messages(id: String): List<MessageEntity>
     @Query("SELECT * FROM attachments WHERE messageId=:id") suspend fun attachments(id: String): List<AttachmentEntity>
     @Query("SELECT * FROM conversations WHERE id=:id") suspend fun conversation(id: String): ConversationEntity?
+    @Query("SELECT * FROM messages WHERE id=:id") suspend fun message(id: String): MessageEntity?
     @Query("SELECT id FROM attachments") suspend fun fileIds(): List<String>
     @Upsert suspend fun saveConversation(value: ConversationEntity)
     @Insert suspend fun insertMessage(value: MessageEntity)
     @Update suspend fun updateMessage(value: MessageEntity)
     @Insert suspend fun insertAttachments(values: List<AttachmentEntity>)
     @Query("DELETE FROM conversations WHERE id=:id") suspend fun deleteConversation(id: String)
+    @Query("DELETE FROM conversations WHERE id=:id AND NOT EXISTS (SELECT 1 FROM messages WHERE conversationId=:id)")
+    suspend fun deleteEmptyConversation(id: String): Int
+    @Query("DELETE FROM conversations WHERE NOT EXISTS (SELECT 1 FROM messages WHERE messages.conversationId=conversations.id)")
+    suspend fun deleteEmptyConversations()
+    @Query("UPDATE conversations SET title=:title WHERE id=:id AND title='新对话'")
+    suspend fun setGeneratedTitle(id: String, title: String)
+    @Query("UPDATE conversations SET updatedAt=:updatedAt WHERE id=:id") suspend fun touchConversation(id: String, updatedAt: Long)
     @Query("DELETE FROM messages WHERE id=:id") suspend fun deleteMessage(id: String)
     @Query("UPDATE messages SET status='interrupted', error='上次生成因进程退出而中断，可重新生成' WHERE status='generating'") suspend fun markInterrupted()
 }

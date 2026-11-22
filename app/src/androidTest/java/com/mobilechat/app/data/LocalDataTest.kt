@@ -44,6 +44,20 @@ class LocalDataTest {
         assertEquals(1, repository.dao.attachments(user.id).size)
         assertEquals("gpt-5.6-sol", repository.dao.conversation(id)!!.model)
     }
+    @Test fun emptyConversationCleanupAndGeneratedTitlePreserveExistingData() = runBlocking {
+        val empty = repository.newConversation(Provider())
+        val used = repository.newConversation(Provider())
+        repository.dao.insertMessage(MessageEntity("first-user", used, "user", "问题", 1))
+        assertEquals(1, repository.dao.deleteEmptyConversation(empty))
+        assertEquals(0, repository.dao.deleteEmptyConversation(used))
+        repository.dao.setGeneratedTitle(used, "自动标题")
+        repository.dao.saveConversation(repository.dao.conversation(used)!!.copy(title = "手动标题"))
+        repository.dao.setGeneratedTitle(used, "迟到的自动标题")
+        repository.dao.deleteEmptyConversations()
+        assertNull(repository.dao.conversation(empty))
+        assertEquals("手动标题", repository.dao.conversation(used)!!.title)
+        assertEquals("问题", repository.dao.messages(used).single().text)
+    }
     @Test fun regenerationPreservesOriginalUntilSuccessfulReplacement() = runBlocking {
         val id = repository.newConversation(Provider())
         val old = MessageEntity("old", id, "assistant", "原回复", 2)

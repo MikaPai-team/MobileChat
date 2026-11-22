@@ -2,7 +2,8 @@ package com.mobilechat.app.ui
 
 private val cjkBoldEnding = Regex("(\\*\\*[^*\\n]+[\\p{P}])\\*\\*(?=[\\p{L}\\p{N}])")
 
-internal fun normalizeMarkdown(source: String): String {
+internal fun normalizeMarkdown(input: String): String {
+    val source = input.replace("\r\n", "\n").replace('\r', '\n')
     val output = StringBuilder()
     val prose = StringBuilder()
     fun flush() {
@@ -42,8 +43,12 @@ internal fun normalizeMarkdown(source: String): String {
                 val display = open == "\\[" || (open == "$$" && before.isBlank() && after.isBlank())
                 flush()
                 if (display) {
+                    // Keep every math line inside the same list item as its opening delimiter.
+                    val indent = before.takeIf { it.isBlank() }.orEmpty()
                     if (before.isNotBlank()) output.append("\n\n")
-                    output.append("$$\n").append(body.trim()).append("\n$$")
+                    output.append("$$\n")
+                        .append(body.trim().lines().joinToString("\n") { indent + it.removePrefix(indent) })
+                        .append('\n').append(indent).append("$$")
                     if (after.isNotBlank()) output.append("\n\n")
                 } else output.append("$$").append(body).append("$$")
                 index = end + close.length

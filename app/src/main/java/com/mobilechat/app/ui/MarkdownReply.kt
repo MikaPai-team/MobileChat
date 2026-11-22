@@ -5,6 +5,7 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.os.SystemClock
+import android.util.TypedValue
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -43,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -221,10 +223,11 @@ private fun CodeBlock(part: MarkdownPart.Code, syntax: SyntaxHighlight, backgrou
 }
 
 @Composable
-fun MarkdownReply(text: String, copy: (String) -> Unit, animate: Boolean = false) {
+fun MarkdownReply(text: String, copy: (String) -> Unit, animate: Boolean = false,
+    textColor: Color = MaterialTheme.colorScheme.onSurface, textSize: TextUnit = 16.sp) {
     val context = LocalContext.current
-    val color = MaterialTheme.colorScheme.onSurface.toArgb()
-    val mathTextSize = with(LocalDensity.current) { 16.sp.toPx() }
+    val color = textColor.toArgb()
+    val mathTextSize = with(LocalDensity.current) { textSize.toPx() }
     val link = MaterialTheme.colorScheme.primary.toArgb()
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val codeBackground = if (dark) Color(0xFF242428) else Color(0xFFE8E8EB)
@@ -258,10 +261,11 @@ fun MarkdownReply(text: String, copy: (String) -> Unit, animate: Boolean = false
             key(index, part::class) {
                 when (part) {
                     is MarkdownPart.Prose -> AndroidView(factory = { StreamingReplyView(it).apply {
-                        setTextSize(16f); setLineSpacing(0f, 1.3f); setTextIsSelectable(true)
+                        setLineSpacing(0f, 1.3f); setTextIsSelectable(true)
                         movementMethod = LinkMovementMethod.getInstance()
                         importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES
                     } }, update = { view ->
+                        view.setTextSize(TypedValue.COMPLEX_UNIT_PX, mathTextSize)
                         view.setTextColor(color); view.setLinkTextColor(link); view.render(markwon, part.content, animate)
                     }, modifier = Modifier.fillMaxWidth())
                     is MarkdownPart.Code -> CodeBlock(part, syntax, codeBackground, copy)

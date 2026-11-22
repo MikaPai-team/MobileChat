@@ -36,16 +36,32 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
     val ready = MutableStateFlow(false)
     val editorKeys = mutableMapOf<String, String>()
     private var generationJob: Job? = null
+    private val titleJobs = mutableMapOf<String, Job>()
 
-    init { launchAction { repository.awaitReady(); ready.value = true } }
+    init { launchAction {
+        repository.awaitReady()
+        selectedId.value?.let { if (repository.dao.conversation(it) == null) saved["conversation"] = null }
+        ready.value = true
+    } }
     private fun launchAction(block: suspend () -> Unit) = viewModelScope.launch {
         try { block() } catch (e: CancellationException) { throw e }
         catch (e: Exception) { events.emit(e.message ?: "操作失败，请重试") }
     }
-    fun select(id: String?) { saved["conversation"] = id }
-    fun newConversation() = launchAction {
+    fun select(id: String?) {
+        val previous = selectedId.value
+        saved["conversation"] = id
+        if (previous != null && previous != id) launchAction {
+            busy.first { !it }; importing.first { !it }
+            if (selectedId.value != previous && repository.dao.deleteEmptyConversation(previous) > 0) {
+                drafts.value[previous]?.attachments?.forEach { withContext(Dispatchers.IO) { repository.files.delete(it.id) } }
+                drafts.update { it - previous }
+            }
+        }
+    }
+    fun newConversation(done: () -> Unit = {}) = launchAction {
         val provider = settings.value.providers.firstOrNull() ?: error("请先在设置中添加一个站点")
         select(repository.newConversation(provider))
+        done()
     }
     fun rename(id: String, title: String) = launchAction {
         require(title.isNotBlank()) { "会话名称不能为空" }
@@ -53,6 +69,7 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
     }
     fun deleteConversation(id: String) = launchAction {
         require(generation.value?.conversationId != id && !importing.value) { "请先停止生成或等待附件读取完成" }
+        titleJobs.remove(id)?.cancel()
         drafts.value[id]?.attachments?.forEach { withContext(Dispatchers.IO) { repository.files.delete(it.id) } }
         repository.deleteConversation(id)
         drafts.update { it - id }
@@ -61,6 +78,18 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
     fun editText(text: String) {
         val id = selectedId.value ?: return
         drafts.update { it + (id to ((it[id] ?: Draft()).copy(text = text))) }
+    }
+    fun editMessage(messageId: String, text: String, done: () -> Unit) = launchAction {
+        require(!busy.value) { "请先停止生成再编辑消息" }
+        val value = text.trim()
+        repository.database.withTransaction {
+            val message = repository.dao.message(messageId) ?: error("消息不存在")
+            require(message.role == "user" && message.conversationId == selectedId.value) { "只能编辑当前会话中自己发送的消息" }
+            require(value.isNotEmpty() || repository.dao.attachments(message.id).isNotEmpty()) { "消息不能为空" }
+            repository.dao.updateMessage(message.copy(text = value))
+            repository.dao.touchConversation(message.conversationId, System.currentTimeMillis())
+        }
+        done()
     }
     fun removeAttachment(id: String) = launchAction {
         val conversation = selectedId.value ?: return@launchAction
@@ -214,7 +243,7 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
                         val user = MessageEntity(UUID.randomUUID().toString(), id, "user", draft.text.trim(), position)
                         repository.dao.insertMessage(user)
                         repository.dao.insertAttachments(draft.attachments.map { it.copy(messageId = user.id) })
-                        repository.dao.saveConversation(conversation.copy(title = if (conversation.title == "新对话") draft.text.trim().take(28).ifEmpty { draft.attachments.first().name.take(28) } else conversation.title, updatedAt = System.currentTimeMillis()))
+                        repository.dao.touchConversation(id, System.currentTimeMillis())
                     }
                     existing.filter { it.replacesId == replacing && replacing != null }.forEach { repository.dao.deleteMessage(it.id) }
                     responseMessage = MessageEntity(UUID.randomUUID().toString(), id, "assistant", position = position + 1, status = "generating", replacesId = replacing, modelName = provider.defaultModel)
@@ -242,6 +271,9 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
                             receivedText = update.text; receivedReasoning = update.reasoning
                             generation.value = Generation(id, message.id, receivedText, receivedReasoning)
                             repository.finish(message, update); completed = true
+                            if (input.count { it.role == "user" } == 1 && conversation.title == "新对话") {
+                                summarizeTitle(id, provider, key, input + InputMessage("assistant", update.text))
+                            }
                         }
                     }
                 }
@@ -251,6 +283,20 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
                 responseMessage?.let { repository.dao.updateMessage(it.copy(text = receivedText, reasoning = receivedReasoning, status = "failed", error = e.message ?: "生成失败")) }
                 events.emit(e.message ?: "生成失败")
             } finally { generation.value = null; busy.value = false }
+        }
+    }
+
+    private fun summarizeTitle(id: String, provider: Provider, key: String, input: List<InputMessage>) {
+        if (titleJobs[id]?.isActive == true) return
+        titleJobs[id] = viewModelScope.launch {
+            try {
+                val prompt = getApplication<Application>().resources.openRawResource(R.raw.conversation_title_prompt)
+                    .bufferedReader().use { it.readText() }
+                val title = client.generateTitle(provider, key, input, prompt, id)
+                repository.dao.setGeneratedTitle(id, title)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { events.emit("会话标题生成失败：${e.message ?: "请稍后重试"}") }
+            finally { titleJobs.remove(id) }
         }
     }
 }

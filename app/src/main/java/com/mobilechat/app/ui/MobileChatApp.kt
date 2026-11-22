@@ -59,6 +59,7 @@ fun MobileChatApp(vm: ChatViewModel) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val selected by vm.selectedId.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val ready by vm.ready.collectAsStateWithLifecycle()
     var backStack by rememberSaveable { mutableStateOf(if (selected == null) listOf("home") else listOf("home", "chat")) }
     val route = backStack.last()
     val transitionState = remember { SeekableTransitionState(route) }
@@ -72,6 +73,9 @@ fun MobileChatApp(vm: ChatViewModel) {
     var backProgress by remember { mutableFloatStateOf(0f) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(vm) { vm.events.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(ready, selected, route) {
+        if (ready && selected == null && route == "chat") backStack = listOf("home")
+    }
     fun canNavigate() = !inPredictiveBack && transitionState.currentState == backStack.last() && transitionState.targetState == backStack.last()
     fun navigate(destination: String) {
         if (!canNavigate() || destination == backStack.last()) return
@@ -152,7 +156,7 @@ fun MobileChatApp(vm: ChatViewModel) {
                             }, onNew = {
                                 if (canNavigate()) {
                                     if (settings.providers.isEmpty()) navigate("editor/${UUID.randomUUID()}")
-                                    else { vm.newConversation(); navigate("chat") }
+                                    else vm.newConversation { navigate("chat") }
                                 }
                             }, onSettings = { navigate("settings") })
                             screen == "chat" -> ChatScreen(vm, onBack = { back() }, onSettings = { navigate("settings") })

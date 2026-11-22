@@ -5,8 +5,27 @@ import org.junit.Test
 import org.commonmark.parser.Parser
 import org.commonmark.node.AbstractVisitor
 import org.commonmark.node.StrongEmphasis
+import org.commonmark.node.CustomBlock
+import io.noties.markwon.ext.latex.JLatexMathBlock
+import io.noties.markwon.ext.latex.JLatexMathPlugin
+import java.io.File
 
 class MarkdownCompatTest {
+    @Test fun screenshotListFormulasRemainSeparateFromProse() {
+        val source = File("src/androidTest/assets/latex_fix.txt").readText().replace("\r\n", "\n")
+        val expected = Regex("\\\\\\[(.*?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
+            .findAll(source).map { it.groupValues[1].trim() }.toList()
+        val parser = Parser.builder().also { JLatexMathPlugin.create(16f).configureParser(it) }.build()
+        val actual = mutableListOf<String>()
+        parser.parse(normalizeMarkdown(source)).accept(object : AbstractVisitor() {
+            override fun visit(block: CustomBlock) {
+                if (block is JLatexMathBlock) actual += block.latex().trim()
+                visitChildren(block)
+            }
+        })
+        assertEquals(expected, actual)
+    }
+
     @Test fun chemistryDisplayFormulasKeepTexAndBecomeMathBlocks() {
         val formula = "\\boxed{\\mathrm{Ag^{+}+Cl^{-}\\rightarrow AgCl\\downarrow}}"
         assertEquals("前文\n\n$$\n$formula\n$$\n\n后文", normalizeMarkdown("前文\\[$formula\\]后文"))
