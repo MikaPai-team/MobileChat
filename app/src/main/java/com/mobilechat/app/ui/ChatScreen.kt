@@ -5,6 +5,16 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.DragInteraction
@@ -26,10 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -102,7 +114,7 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onSettings: () -> Unit) {
                     Spacer(Modifier.height(12.dp)); Text("也可以拍照或附上任意文件。\n输入 / 查看可用命令。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            LazyColumn(Modifier.fillMaxSize(), state = list, reverseLayout = true,
+            LazyColumn(Modifier.fillMaxSize().testTag("chat-messages"), state = list, reverseLayout = true,
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = with(density) { topHeight.toDp() } + 12.dp,
                     bottom = with(density) { bottomHeight.toDp() } + 12.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 items(messages.asReversed(), key = { it.id }) { message ->
@@ -150,10 +162,20 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onSettings: () -> Unit) {
             }
             IconButton(onSettings) { Icon(Icons.Default.Settings, "设置") }
         }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { bottomHeight = it.height }.navigationBarsPadding().padding(12.dp)) {
-            if (!nearLatest && messages.isNotEmpty()) {
-                FilledTonalButton(onClick = { following = true; scope.launch { list.animateScrollToItem(0) } }, modifier = Modifier.align(Alignment.End).padding(bottom = 8.dp)) { Text("回到最新消息") }
-            }
+        AnimatedVisibility(
+            visible = !nearLatest && messages.isNotEmpty(),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = with(density) { bottomHeight.toDp() } + 8.dp),
+            enter = fadeIn(tween(180)) + slideInVertically(spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow)) { it / 3 } +
+                scaleIn(spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.92f, transformOrigin = TransformOrigin(1f, 1f)),
+            exit = fadeOut(tween(150)) + slideOutVertically(spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)) { it / 3 } +
+                scaleOut(spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow), targetScale = 0.92f, transformOrigin = TransformOrigin(1f, 1f)),
+        ) {
+            FilledTonalButton(onClick = {
+                following = false
+                scope.launch { list.animateScrollToItem(0); following = true }
+            }) { Text("回到最新消息") }
+        }
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().testTag("chat-composer").onSizeChanged { bottomHeight = it.height }.navigationBarsPadding().padding(12.dp)) {
             Column(Modifier.fillMaxWidth().chrome(backdrop, settings.glass).padding(8.dp)) {
                 if (draft.text.trimStart().startsWith("/")) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 4.dp)) {

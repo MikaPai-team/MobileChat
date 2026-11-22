@@ -1,5 +1,25 @@
 # MobileChat 实现与验证状态
 
+## 返回最新消息动效与 R8 公式宏修复 0.1.7（2026-11-22）
+
+- “回到最新消息”原本在输入栏的测量范围内，显示时增加 `bottomHeight`，改变消息列表底部留白。现在作为输入栏上方的独立浮层，不参与输入栏测量，加入透明度渐入渐出与位移、缩放弹簧动画。
+- 点击按钮后先完成 `animateScrollToItem(0)`，再恢复自动跟随，避免先设置跟随状态触发即时定位而打断平滑滚动。
+- 在隔离 Android 10 / API 29 模拟器中复现了 0.1.6 R8 开启版的公式故障：`NewCommandMacro` 通过反射加载时出现 `NoSuchMethodException`，无参构造函数被优化移除，导致 `\dfrac` 等别名宏显示为源码。未开启 R8 的测试构建能绘制同一表达式。
+- 仅保留 `org.scilab.forge.jlatexmath.NewCommandMacro` 类名、无参构造函数和 `executeMacro(TeXParser, String[])`，不添加公式库的全量 keep。0.1.7 的 R8 映射确认这些成员已保留。
+- 隔离模拟器上通过两项 Android 回归检查：5 个代表性公式产生非空图像，以及按钮显示、隐藏和点击回到最新消息时输入栏高度均为 368 px。检查使用 Debug 测试构建；用户要求停止复测后，没有安装或运行最终的两种非调试 APK。
+- 递增至 `0.1.7` / versionCode 8，两版包名及原签名一致。UI 测试依赖限于 Debug / androidTest 配置。
+
+`scripts/package.ps1 -Variant both -Offline` 在 2 分 18 秒内完成；两个版本的 Kotlin / Java 编译与 Lint Vital 通过，开启版实际执行 R8 和资源缩减。交付副本通过包名、版本、非调试标记、有效签名与 SHA-256 核对，均包含 30 个公式字体文件。
+
+包名：`com.mobilechat.app`。签名证书 SHA-256：`d982fc124c1234397db5614bc048e86ee39afb1f24d1736842cf88c70a6b630f`，与 0.1.6 相同。
+
+| 版本 | 交付文件 | 大小 | SHA-256 |
+| --- | --- | --- | --- |
+| R8 开启 | `dist/MobileChat-0.1.7-r8-on.apk` | 2,656,863 字节 | `09ba47c91e4fe33c4c62814b90a3e092e35b8e8fae72fed3f252dd89a818e9cc` |
+| R8 关闭 | `dist/MobileChat-0.1.7-r8-off.apk` | 17,267,339 字节 | `01008b5ac1a06ade6ccfff7aa8a29b7c7abe5263b91bf4df3253db4de5e74254` |
+
+日志：`package-0.1.7.log`、`ui-regression-build.log`；产物核对：`dist/0.1.7-verification.json`。模拟器检查与 R8 故障证据保存在本地 `build/ui-regression-0.1.7/`。未测真实站点与真机性能；编译、静态保留规则核对及 Debug 模拟器检查不能视为最终 R8 APK 的运行或真机性能验证。
+
 ## LaTeX 与中文 Markdown 兼容修复 0.1.6（2026-11-22）
 
 - 原实现未接入数学扩展，Markdown 将 `\[...\]` / `\(...\)` 的括号转义消耗后，公式中的 `\mathrm`、上下标与箭头成为普通文字。现在接入 Markwon JLatexMath 与 Inline Parser，在解析前兼容四种常见公式分隔符，区分行内和独立公式。

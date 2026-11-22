@@ -4,7 +4,7 @@
 
 **原生、简洁、可自定义站点的 Android AI 对话客户端**
 
-<img src="https://img.shields.io/badge/Version-0.1.6%20%287%29-007AFF?style=flat-square" alt="Version 0.1.6 (7)" />
+<img src="https://img.shields.io/badge/Version-0.1.7%20%288%29-007AFF?style=flat-square" alt="Version 0.1.7 (8)" />
 <img src="https://img.shields.io/badge/Android-8.0%2B-34C759?style=flat-square" alt="Android 8.0+" />
 <img src="https://img.shields.io/badge/UI-Jetpack%20Compose%20%2F%20Miuix-8B5CF6?style=flat-square" alt="Jetpack Compose / Miuix" />
 
@@ -43,7 +43,7 @@
 
 </div>
 
-以上为提供的三张应用截图，设置页展示的是 0.1.5。当前发布版本为 0.1.6，界面会随版本、主题和设备尺寸有所不同。
+以上为提供的三张应用截图，设置页展示的是 0.1.5。当前发布版本为 0.1.7，界面会随版本、主题和设备尺寸有所不同。
 
 玻璃效果默认关闭，开启后仅用于聊天顶部栏与输入栏；Android 13+ 且硬件加速时使用背景模糊，其他设备使用实色背景。
 
@@ -53,14 +53,14 @@
 
 - 系统要求：Android 8.0+（API 26）。
 - 安装 APK 时需允许对应来源安装应用。
-- 当前版本：**0.1.6**，versionCode **7**，包名 `com.mobilechat.app`。
+- 当前版本：**0.1.7**，versionCode **8**，包名 `com.mobilechat.app`。
 
 每次默认提供两种非调试构建：
 
 | 安装包 | R8 与资源缩减 | 用途 |
 | --- | --- | --- |
-| [MobileChat-0.1.6-r8-on.apk](https://github.com/MikaPai-team/MobileChat/releases/download/v0.1.6/MobileChat-0.1.6-r8-on.apk) | 开启代码优化、缩减 / 混淆与资源缩减 | 日常使用，安装包更小 |
-| [MobileChat-0.1.6-r8-off.apk](https://github.com/MikaPai-team/MobileChat/releases/download/v0.1.6/MobileChat-0.1.6-r8-off.apk) | 关闭代码与资源缩减 | 对比运行表现与排查优化兼容问题 |
+| [MobileChat-0.1.7-r8-on.apk](https://github.com/MikaPai-team/MobileChat/releases/download/v0.1.7/MobileChat-0.1.7-r8-on.apk) | 开启代码优化、缩减 / 混淆与资源缩减 | 日常使用，安装包更小 |
+| [MobileChat-0.1.7-r8-off.apk](https://github.com/MikaPai-team/MobileChat/releases/download/v0.1.7/MobileChat-0.1.7-r8-off.apk) | 关闭代码与资源缩减 | 对比运行表现与排查优化兼容问题 |
 
 两版共用包名、版本和现有签名证书，可覆盖安装及互换，不需要卸载清除聊天数据。当前沿用已有 Android Debug 证书以保持升级兼容，**两个 APK 本身均为非调试构建**。Release 同时附带各 APK 的 SHA-256 校验文件。
 
@@ -88,12 +88,13 @@
 
 ## 最近更新
 
+- **0.1.7**：将“回到最新消息”改为独立浮层，加入渐入渐出的弹簧动画，修复显示按钮时消息列表跳动；补齐 LaTeX 宏的 R8 反射保留规则，处理 `\dfrac` 等公式显示为源码的问题。
 - **0.1.6**：接入原生 LaTeX 公式渲染，兼容四种常见公式分隔符；修复中文标点附近加粗标记外露，保护代码、转义与价格文本。
 - **0.1.5**：修复深色主题下文字与图标颜色；新增带语言标题、复制按钮和语法高亮的代码卡片。
 - **0.1.4**：修复玻璃模糊越界，调整浅深主题覆色，并让聊天内容避开状态栏。
 - **0.1.3**：新增模型与推理强度命令、思考进展、回答渐显、系统相机拍照与任意文件导入。
 
-实现记录与各版本验证范围见 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)。当前 APK 已完成编译及产物核对；公式显示、真实站点兼容性和真机性能仍需设备验证。
+实现记录与各版本验证范围见 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)。0.1.7 完成双版本编译及产物核对，并通过 Debug 测试构建的模拟器布局与原生公式绘制检查；最终两个非调试 APK 尚未进行安装复测，真实站点兼容性和真机性能仍需设备验证。
 
 ## 构建
 
