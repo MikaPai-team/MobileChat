@@ -11,6 +11,17 @@
 
 验证范围：用户要求停止本地测试之前，已执行一项修改前的定位检查，复现了列表公式解析错误（1 项失败）。用户要求之后，不再运行测试或模拟器复测；新增 / 更新的回归测试源码未执行。仅进行代码审阅、Git 差异核对、源码推送和双版本编译打包，不声称已通过真实站点或真机性能验证。
 
+源码修改提交 `7ccd9ec` 已推送至 `MikaPai-team/MobileChat` 的 `main`。随后运行 `scripts/package.ps1 -Variant both -Offline`，2 分 9 秒完成，两个版本 Kotlin / Java 编译和 Lint Vital 通过；R8 开启版实际执行 `minifyReleaseWithR8`、资源缩减与优化。打包日志未包含本地单元或设备测试任务。
+
+最终 `dist` 副本重新使用 aapt2、apksigner 和 SHA-256 核对：包名均为 `com.mobilechat.app`，版本 `0.1.8` / versionCode 9，非调试标记一致；有效签名证书 SHA-256 均为 `d982fc124c1234397db5614bc048e86ee39afb1f24d1736842cf88c70a6b630f`，与 0.1.7 相同。校验文件与实际 APK 哈希一致。
+
+| 版本 | 交付文件 | 大小 | SHA-256 |
+| --- | --- | --- | --- |
+| R8 开启 | `dist/MobileChat-0.1.8-r8-on.apk` | 2,673,719 字节 | `9f0e32c6d271be94b21d6c9f05159797174265807207f74243a3035fffd60db6` |
+| R8 关闭 | `dist/MobileChat-0.1.8-r8-off.apk` | 17,284,195 字节 | `5fd4348f3570ff612d43dc85027df37df8af05893b13a6af9e5cfb678febef25` |
+
+编译日志：`package-0.1.8.log`；报告：`dist/package-report.json` 与 `dist/0.1.8-verification.json`。修改后的本地测试、真实 API 标题请求、最终 APK 安装与真机性能均未验证。
+
 ## 返回最新消息动效与 R8 公式宏修复 0.1.7（2026-11-22）
 
 - “回到最新消息”原本在输入栏的测量范围内，显示时增加 `bottomHeight`，改变消息列表底部留白。现在作为输入栏上方的独立浮层，不参与输入栏测量，加入透明度渐入渐出与位移、缩放弹簧动画。
