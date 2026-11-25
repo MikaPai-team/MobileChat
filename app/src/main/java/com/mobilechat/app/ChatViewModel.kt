@@ -8,17 +8,20 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.mobilechat.app.data.*
 import com.mobilechat.app.network.ResponsesClient
+import com.mobilechat.app.network.HitokotoClient
+import com.mobilechat.app.network.Quote
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.UUID
 
 data class Draft(val text: String = "", val attachments: List<AttachmentEntity> = emptyList())
-data class Generation(val conversationId: String, val messageId: String, val text: String = "", val reasoning: String = "")
+data class Generation(val conversationId: String, val messageId: String, val text: String = "", val reasoning: String = "", val webSearchStatus: String? = null)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(application: Application, private val saved: SavedStateHandle) : AndroidViewModel(application) {
     val repository = (application as MobileChatApplication).repository
     private val client = ResponsesClient()
+    private val hitokotoClient = HitokotoClient()
     val settings = repository.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
     val conversations = repository.dao.observeConversations().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val selectedId = saved.getStateFlow<String?>("conversation", null)
@@ -33,10 +36,12 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
     val commandPicker = MutableStateFlow<String?>(null)
     val generation = MutableStateFlow<Generation?>(null)
     val events = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val quote = MutableStateFlow<Quote?>(null)
     val ready = MutableStateFlow(false)
     val editorKeys = mutableMapOf<String, String>()
     private var generationJob: Job? = null
     private val titleJobs = mutableMapOf<String, Job>()
+    private var quoteJob: Job? = null
 
     init { launchAction {
         repository.awaitReady()
@@ -155,6 +160,15 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
         val id = selectedId.value ?: return@launchAction
         repository.dao.conversation(id)?.let { repository.dao.saveConversation(it.copy(reasoningEffort = effort)) }
     }
+    fun changeWebSearch(enabled: Boolean) = launchAction {
+        require(!busy.value) { "请先停止生成再切换联网搜索" }
+        val id = selectedId.value ?: return@launchAction
+        repository.dao.setWebSearch(id, enabled)
+    }
+    fun refreshQuote() {
+        if (quoteJob?.isActive == true) return
+        quoteJob = viewModelScope.launch { quote.value = runCatching { hitokotoClient.random() }.getOrNull() }
+    }
     fun saveProvider(provider: Provider, plaintextKey: String, done: () -> Unit) = launchAction {
         provider.validate()
         val encrypted = withContext(Dispatchers.IO) { repository.vault.encrypt(plaintextKey.trim()) }
@@ -254,25 +268,26 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
                 generation.value = Generation(id, message.id)
                 var lastPersisted = 0L
                 suspend fun persistPartial() {
-                    generation.value = Generation(id, message.id, receivedText, receivedReasoning)
+                    generation.value = generation.value?.copy(text = receivedText, reasoning = receivedReasoning)
                     if (System.nanoTime() - lastPersisted > 250_000_000) {
                         repository.dao.updateMessage(message.copy(text = receivedText, reasoning = receivedReasoning))
                         lastPersisted = System.nanoTime()
                     }
                 }
-                client.generate(provider, key, input, sessionId = id).collect { update ->
+                client.generate(provider, key, input, sessionId = id, webSearch = conversation.webSearch).collect { update ->
                     when (update) {
                         is ResponseUpdate.Text -> {
                             receivedText = update.text
                             persistPartial()
                         }
                         is ResponseUpdate.Reasoning -> { receivedReasoning = update.text; persistPartial() }
+                        is ResponseUpdate.WebSearch -> { generation.value = generation.value?.copy(webSearchStatus = update.status) }
                         is ResponseUpdate.Completed -> {
                             receivedText = update.text; receivedReasoning = update.reasoning
                             generation.value = Generation(id, message.id, receivedText, receivedReasoning)
                             repository.finish(message, update); completed = true
                             if (input.count { it.role == "user" } == 1 && conversation.title == "新对话") {
-                                summarizeTitle(id, provider, key, input + InputMessage("assistant", update.text))
+                                summarizeTitle(id, input)
                             }
                         }
                     }
@@ -286,10 +301,15 @@ class ChatViewModel(application: Application, private val saved: SavedStateHandl
         }
     }
 
-    private fun summarizeTitle(id: String, provider: Provider, key: String, input: List<InputMessage>) {
+    private fun summarizeTitle(id: String, input: List<InputMessage>) {
         if (titleJobs[id]?.isActive == true) return
         titleJobs[id] = viewModelScope.launch {
             try {
+                val conversation = repository.dao.conversation(id) ?: return@launch
+                val provider = settings.value.providers.firstOrNull { it.id == conversation.providerId }
+                    ?.let { it.copy(defaultModel = conversation.model, models = (it.models + conversation.model).distinct()) }
+                    ?: error("当前会话的站点已删除")
+                val key = readKey(provider)
                 val prompt = getApplication<Application>().resources.openRawResource(R.raw.conversation_title_prompt)
                     .bufferedReader().use { it.readText() }
                 val title = client.generateTitle(provider, key, input, prompt, id)

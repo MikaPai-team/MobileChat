@@ -71,6 +71,12 @@ class ResponseDecoderTest {
     @Test fun unsupportedOutputIsNotInventedAsText() {
         assertTrue(runCatching { ResponseDecoder().finish(parseObject("""{"status":"completed","output":[{"type":"reasoning"}]}""")) }.isFailure)
     }
+    @Test fun webSearchProgressAndCitationsReachTheConversationText() {
+        val decoder = ResponseDecoder()
+        assertEquals(ResponseUpdate.WebSearch("正在搜索网络…"), decoder.accept(parseObject("""{"type":"response.web_search_call.searching"}""")))
+        val response = parseObject("""{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"结论。","annotations":[{"type":"url_citation","url":"https://example.com/article","title":"参考资料"}]}]}]}""")
+        assertEquals("结论。\n\n来源：[参考资料](https://example.com/article)", decoder.finish(response).text)
+    }
     @Test fun attachmentBudgetIncludesFullHistoryAndMissingFilesFail() {
         val large = folder.newFile("big.pdf")
         RandomAccessFile(large, "rw").use { it.setLength(25_000_000) }

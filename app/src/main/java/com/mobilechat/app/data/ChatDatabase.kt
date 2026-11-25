@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "conversations")
 data class ConversationEntity(@PrimaryKey val id: String, val title: String, val providerId: String,
-    val model: String, val updatedAt: Long = System.currentTimeMillis(), val reasoningEffort: String? = null)
+    val model: String, val updatedAt: Long = System.currentTimeMillis(), val reasoningEffort: String? = null,
+    @ColumnInfo(defaultValue = "0") val webSearch: Boolean = false)
 
 @Entity(tableName = "messages", foreignKeys = [ForeignKey(entity = ConversationEntity::class,
     parentColumns = ["id"], childColumns = ["conversationId"], onDelete = ForeignKey.CASCADE)], indices = [Index("conversationId")])
@@ -45,11 +46,12 @@ interface ChatDao {
     @Query("UPDATE conversations SET title=:title WHERE id=:id AND title='新对话'")
     suspend fun setGeneratedTitle(id: String, title: String)
     @Query("UPDATE conversations SET updatedAt=:updatedAt WHERE id=:id") suspend fun touchConversation(id: String, updatedAt: Long)
+    @Query("UPDATE conversations SET webSearch=:enabled WHERE id=:id") suspend fun setWebSearch(id: String, enabled: Boolean)
     @Query("DELETE FROM messages WHERE id=:id") suspend fun deleteMessage(id: String)
     @Query("UPDATE messages SET status='interrupted', error='上次生成因进程退出而中断，可重新生成' WHERE status='generating'") suspend fun markInterrupted()
 }
 
-@Database(entities = [ConversationEntity::class, MessageEntity::class, AttachmentEntity::class], version = 2, exportSchema = true)
+@Database(entities = [ConversationEntity::class, MessageEntity::class, AttachmentEntity::class], version = 3, exportSchema = true)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun dao(): ChatDao
     companion object {
@@ -59,7 +61,12 @@ abstract class ChatDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE messages ADD COLUMN reasoning TEXT NOT NULL DEFAULT ''")
             }
         }
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversations ADD COLUMN webSearch INTEGER NOT NULL DEFAULT 0")
+            }
+        }
         fun create(context: Context) = Room.databaseBuilder(context, ChatDatabase::class.java, "mobilechat.db")
-            .addMigrations(MIGRATION_1_2).build()
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

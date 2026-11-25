@@ -29,7 +29,7 @@ class ResponsesClientTest {
         val station = provider().copy(defaultModel = "my/model", models = listOf("my/model"),
             instructions = "普通聊天提示词", reasoningEffort = "xhigh")
         val prompt = "概括主题，不超过20字"
-        val input = listOf(InputMessage("user", "怎么解分段函数"), InputMessage("assistant", "分别计算三个区间"))
+        val input = listOf(InputMessage("user", "怎么解分段函数"), InputMessage("assistant", "分别计算三个区间"), InputMessage("user", "给我一个例子"))
         assertEquals("解析分段函数与取值范围", ResponsesClient().generateTitle(station, "test-key", input, prompt, "first-turn"))
         val request = server.takeRequest()
         assertEquals("/custom/responses?route=test", request.path)
@@ -39,7 +39,8 @@ class ResponsesClientTest {
         assertEquals(prompt, body["instructions"]!!.jsonPrimitive.content)
         assertEquals("low", body["reasoning"]!!.jsonObject["effort"]!!.jsonPrimitive.content)
         assertFalse(body["reasoning"]!!.jsonObject.containsKey("summary"))
-        assertEquals(2, body["input"]!!.jsonArray.size)
+        assertEquals(1, body["input"]!!.jsonArray.size)
+        assertEquals("怎么解分段函数", body["input"]!!.jsonArray.single().jsonObject["content"]!!.jsonArray.single().jsonObject["text"]!!.jsonPrimitive.content)
     }
 
     @Test fun exactEndpointModelsAuthenticationAndOptionalParameters() = runBlocking {
@@ -71,6 +72,15 @@ class ResponsesClientTest {
         assertFalse(body.containsKey("instructions")); assertFalse(body.containsKey("reasoning")); assertFalse(body.containsKey("max_output_tokens"))
         assertFalse(body.containsKey("tools")); assertFalse(body.containsKey("prompt_cache_key"))
         assertEquals("gpt-6.1-sol", body["model"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun enabledWebSearchAddsTheResponsesSearchToolAndSourceAnnotations() = runBlocking {
+        server.enqueue(jsonReply("结果"))
+        ResponsesClient().generate(provider(), "", listOf(InputMessage("user", "搜索今天的新闻")), webSearch = true).toList()
+        val body = parseObject(server.takeRequest().body.readUtf8())
+        assertEquals("web_search", body["tools"]!!.jsonArray.single().jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("auto", body["tool_choice"]!!.jsonPrimitive.content)
+        assertEquals("web_search_call.action.sources", body["include"]!!.jsonArray.single().jsonPrimitive.content)
     }
 
     @Test fun codexProfileUsesConversationIdentityAndTypedHistory() = runBlocking {

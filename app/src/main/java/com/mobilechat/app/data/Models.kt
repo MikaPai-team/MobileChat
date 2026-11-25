@@ -41,6 +41,7 @@ data class InputAttachment(val name: String, val mime: String, val file: File, v
 sealed interface ResponseUpdate {
     data class Text(val text: String) : ResponseUpdate
     data class Reasoning(val text: String) : ResponseUpdate
+    data class WebSearch(val status: String) : ResponseUpdate
     data class Completed(val text: String, val inputTokens: Int? = null, val outputTokens: Int? = null, val reasoning: String = "") : ResponseUpdate
 }
 

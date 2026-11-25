@@ -30,9 +30,15 @@ internal class ResponseDecoder {
                 if (!value.isNullOrEmpty()) summaries[slot.first to (event["summary_index"]?.jsonPrimitive?.intOrNull ?: 0)] = value
                 ResponseUpdate.Reasoning(reasoning)
             }
+            "response.web_search_call.in_progress", "response.web_search_call.searching" ->
+                ResponseUpdate.WebSearch("正在搜索网络…")
+            "response.web_search_call.completed" ->
+                ResponseUpdate.WebSearch("搜索完成，正在整理结果…")
             "response.output_item.done" -> {
                 val item = event["item"] as? JsonObject
-                if (item?.get("type")?.jsonPrimitive?.contentOrNull == "reasoning") {
+                if (item?.get("type")?.jsonPrimitive?.contentOrNull == "web_search_call") {
+                    ResponseUpdate.WebSearch("正在搜索网络…")
+                } else if (item?.get("type")?.jsonPrimitive?.contentOrNull == "reasoning") {
                     val summary = reasoningText(item)
                     if (summary.isNotEmpty()) {
                         summaries.keys.filter { it.first == slot.first }.toList().forEach(summaries::remove)
@@ -109,7 +115,20 @@ internal class ResponseDecoder {
     }
 
     private fun readMessageParts(item: JsonObject): List<String> = (item["content"] as? JsonArray)
-        ?.mapNotNull { (it as? JsonObject)?.let(::readTextPart) }.orEmpty()
+        ?.mapNotNull { it as? JsonObject }
+        ?.let { parts ->
+            val text = parts.mapNotNull(::readTextPart)
+            val sources = parts.flatMap { part ->
+                (part["annotations"] as? JsonArray).orEmpty().mapNotNull { annotation ->
+                    val citation = annotation as? JsonObject ?: return@mapNotNull null
+                    if (citation["type"]?.jsonPrimitive?.contentOrNull != "url_citation") return@mapNotNull null
+                    val url = citation["url"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val title = citation["title"]?.jsonPrimitive?.contentOrNull?.ifBlank { url } ?: url
+                    "[$title]($url)"
+                }
+            }.distinct()
+            text + listOfNotNull(sources.takeIf { it.isNotEmpty() }?.joinToString(" · ", prefix = "来源："))
+        }.orEmpty()
 
     private fun joinTextParts(values: Collection<String>): String = buildString {
         values.filter(String::isNotEmpty).forEach { value ->

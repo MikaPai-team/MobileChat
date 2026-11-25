@@ -54,6 +54,7 @@ import com.mobilechat.app.data.*
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.TextField as MiuixTextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults as MiuixTextFieldDefaults
+import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 
@@ -143,6 +144,9 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onSettings: () -> Unit) {
                         } else {
                             Text(if (message.replacesId != null) "重新生成 · ${message.modelName ?: conversation.model}" else message.modelName ?: conversation.model, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.height(8.dp))
+                            generation?.takeIf { it.messageId == message.id }?.webSearchStatus?.let { status ->
+                                Text(status, Modifier.padding(bottom = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            }
                             if (reasoning.isNotBlank()) ReasoningProgress(message.id, reasoning, message.status == "generating" && text.isEmpty())
                             if (text.isNotEmpty()) MarkdownReply(text, copy, animate = generation?.messageId == message.id)
                             else if (message.status == "generating" && reasoning.isBlank()) Text("等待模型回复…", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -187,6 +191,16 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onSettings: () -> Unit) {
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().testTag("chat-composer").onSizeChanged { bottomHeight = it.height }.navigationBarsPadding().padding(12.dp)) {
             Column(Modifier.fillMaxWidth().chrome(backdrop, settings.glass).padding(8.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Language, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                        Text("联网搜索", style = MaterialTheme.typography.labelLarge)
+                        Text(if (conversation.webSearch) "AI 可按需搜索，需当前站点支持" else "已关闭",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    MiuixSwitch(checked = conversation.webSearch, onCheckedChange = { vm.changeWebSearch(it) }, enabled = !busy)
+                }
                 if (draft.text.trimStart().startsWith("/")) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
                         listOf("/model", "/effort", "/help").forEach { command ->

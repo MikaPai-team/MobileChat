@@ -34,6 +34,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -53,6 +55,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun MobileChatApp(vm: ChatViewModel) {
@@ -62,6 +68,7 @@ fun MobileChatApp(vm: ChatViewModel) {
     val ready by vm.ready.collectAsStateWithLifecycle()
     var backStack by rememberSaveable { mutableStateOf(if (selected == null) listOf("home") else listOf("home", "chat")) }
     val route = backStack.last()
+    LaunchedEffect(route) { if (route == "home") vm.refreshQuote() }
     val transitionState = remember { SeekableTransitionState(route) }
     val transition = rememberTransition(transitionState, label = "page")
     val pageStates = rememberSaveableStateHolder()
@@ -197,23 +204,36 @@ private fun ConversationList(vm: ChatViewModel, onOpen: (String) -> Unit, onNew:
     val conversations by vm.conversations.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val ready by vm.ready.collectAsStateWithLifecycle()
+    val quote by vm.quote.collectAsStateWithLifecycle()
     var menu by remember { mutableStateOf<ConversationEntity?>(null) }
     var rename by remember { mutableStateOf<ConversationEntity?>(null) }
     var delete by remember { mutableStateOf<ConversationEntity?>(null) }
+    val today = LocalDate.now()
+    val yesterday = today.minusDays(1)
     Column(Modifier.fillMaxSize()) {
         PageTitle("对话", action = { IconButton(onSettings) { Icon(Icons.Default.Settings, "设置") } })
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Text("MobileChat", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(8.dp))
-                Text(if (conversations.isEmpty()) "把想法说出来。" else "继续你的思考。", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                Text(quote?.text ?: "山重水复疑无路，柳暗花明又一村。", fontSize = 32.sp,
+                    fontFamily = FontFamily(Font(com.mobilechat.app.R.font.long_cang_regular)), lineHeight = 42.sp)
+                Text(quote?.attribution?.ifBlank { null } ?: "陆游 · 游山西村", Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Text(if (settings.providers.isEmpty()) "先添加中转站地址、密钥与模型，即可开始交流。" else "文字、图片与文件，都可以放进对话。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(24.dp))
                 MiuixButton(onClick = onNew, enabled = ready, modifier = Modifier.fillMaxWidth()) { MiuixText(if (settings.providers.isEmpty()) "添加第一个站点" else "新建对话") }
                 Spacer(Modifier.height(12.dp))
             }
-            items(conversations, key = { it.id }) { conversation ->
+            conversations.groupBy { Instant.ofEpochMilli(it.updatedAt).atZone(ZoneId.systemDefault()).toLocalDate() }
+                .forEach { (date, datedConversations) ->
+                item(key = "date:$date") {
+                    Text(when (date) { today -> "今天"; yesterday -> "昨天"; else -> date.format(DateTimeFormatter.ofPattern("yyyy年M月d日", locale)) },
+                        Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp),
+                        style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                }
+                items(datedConversations, key = { it.id }) { conversation ->
                 SectionCard {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).clickable { onOpen(conversation.id) }.padding(vertical = 8.dp)) {
@@ -231,6 +251,7 @@ private fun ConversationList(vm: ChatViewModel, onOpen: (String) -> Unit, onNew:
                         }
                     }
                 }
+            }
             }
         }
         if (!ready) LinearProgressIndicator(Modifier.fillMaxWidth())

@@ -28,15 +28,16 @@ class ResponsesClient(private val http: OkHttpClient = OkHttpClient.Builder()
     .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).build()) {
 
     suspend fun generateTitle(provider: Provider, apiKey: String, messages: List<InputMessage>, prompt: String, sessionId: String): String {
+        val firstMessage = messages.firstOrNull { it.role == "user" } ?: error("缺少用户的第一条消息")
         val response = generate(provider.copy(instructions = prompt, reasoningEffort = "low", showReasoning = false, maxOutputTokens = 1024),
-            apiKey, messages, sessionId = "$sessionId:title").filterIsInstance<ResponseUpdate.Completed>().first()
+            apiKey, listOf(firstMessage), sessionId = "$sessionId:title").filterIsInstance<ResponseUpdate.Completed>().first()
         val title = response.text.trim().lineSequence().first().trim().removeSurrounding("\"")
             .removeSurrounding("“", "”").take(20)
         require(title.isNotBlank()) { "接口未返回会话标题" }
         return title
     }
 
-    fun generate(provider: Provider, apiKey: String, messages: List<InputMessage>, sessionId: String = UUID.randomUUID().toString()): Flow<ResponseUpdate> = flow {
+    fun generate(provider: Provider, apiKey: String, messages: List<InputMessage>, sessionId: String = UUID.randomUUID().toString(), webSearch: Boolean = false): Flow<ResponseUpdate> = flow {
         provider.validate()
         require(apiKey.all { it.code in 32..126 }) { "API Key 含无效字符，请检查是否粘贴了换行或中文" }
         validateAttachmentBudget(messages)
@@ -51,7 +52,7 @@ class ResponsesClient(private val http: OkHttpClient = OkHttpClient.Builder()
                     header("session_id", sessionId)
                 }
             }
-            .post(ResponsesBody(provider, messages, sessionId)).build()
+            .post(ResponsesBody(provider, messages, sessionId, webSearch)).build()
         val call = http.newCall(request)
         // Cancellation must close the socket while execute/read is blocked.
         val cancellation = CoroutineScope(currentCoroutineContext()).launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
@@ -151,7 +152,7 @@ internal fun describeError(status: Int, body: String, key: String, codexCompatib
     return prefix + (detail?.takeIf { it.isNotBlank() }?.let { "\n${it.redact(key).take(800)}" } ?: "")
 }
 
-internal class ResponsesBody(private val provider: Provider, private val messages: List<InputMessage>, private val sessionId: String) : RequestBody() {
+internal class ResponsesBody(private val provider: Provider, private val messages: List<InputMessage>, private val sessionId: String, private val webSearch: Boolean = false) : RequestBody() {
     override fun contentType() = (if (provider.codexCompatibility) "application/json" else "application/json; charset=utf-8").toMediaType()
     override fun isOneShot() = true
     override fun writeTo(sink: BufferedSink) {
@@ -165,12 +166,19 @@ internal class ResponsesBody(private val provider: Provider, private val message
                 provider.reasoningEffort?.let { put("effort", it) }
                 if (requestSummary) put("summary", "auto")
             }
-            if (provider.codexCompatibility) {
-                putJsonArray("tools") {}
+            if (provider.codexCompatibility || webSearch) {
+                putJsonArray("tools") {
+                    if (webSearch) addJsonObject { put("type", "web_search") }
+                }
                 put("tool_choice", "auto")
+                putJsonArray("include") {
+                    if (provider.codexCompatibility && (provider.reasoningEffort != null || requestSummary)) add("reasoning.encrypted_content")
+                    if (webSearch) add("web_search_call.action.sources")
+                }
+            }
+            if (provider.codexCompatibility) {
                 put("parallel_tool_calls", true)
                 if (provider.reasoningEffort == null && !requestSummary) put("reasoning", JsonNull)
-                putJsonArray("include") { if (provider.reasoningEffort != null || requestSummary) add("reasoning.encrypted_content") }
                 put("prompt_cache_key", sessionId)
             }
         }.toString().removeSuffix("}")
